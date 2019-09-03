@@ -20,7 +20,15 @@
 
 ​	**没有副作用被称为‘’幂等‘（idempotent）**
 
-​	因为GET是读取，就可以对get请求的数据做**缓存**，这个缓存可以做到浏览器本身上——**彻底避免浏览器发请求**，也可以做到代理上——**nginx**，或者做到sever段——**Etag，至少可以减少带宽消耗**
+​	因为GET是读取，就可以对get请求的数据做**缓存**，这个缓存可以做到浏览器本身上——**彻底避免浏览器发请求**，也可以做到代理上——**nginx**，或者做到sever端——**Etag，至少可以减少带宽消耗**
+
+~~~Etag
+Etag 是URL的Entity Tag，用于标示URL对象是否改变，区分不同语言和Session等等。具体内部含义是使服务器控制的，就像Cookie那样。
+
+HTTP协议规格说明定义ETag为“被请求变量的实体值”。另一种说法是，ETag是一个可以与Web资源关联的记号（token）。典型的Web资源可以一个Web页，但也可能是JSON或XML文档。服务器单独负责判断记号是什么及其含义，并在HTTP响应头中将其传送到客户端，以下是服务器端返回的格式：ETag:"50b1c1d4f775c61:df3"客户端的查询更新格式是这样的：If-None-Match : W / "50b1c1d4f775c61:df3"如果ETag没改变，则返回状态304然后不返回，这也和Last-Modified一样。测试Etag主要在断点下载时比较有用
+~~~
+
+
 
 
 
@@ -59,3 +67,121 @@
 
 
 ​	因此我们一般会**泛泛的说’GET请求没有body只有url，请求数据放在querystring中；POST请求的数据在body中’**，但是！！！**这种情况仅仅限于浏览器发请求的场景！**
+
+
+
+### 接口中的GET和POST
+
+​	 这里是指的是通过浏览器的Ajax api，或者IOS/Android的App的http client， java的commands-httpclient/okhttp或者是curl， postman这几类的工具发出来的GET和POST请求。此实GET/POST不光能用在前端和后端的交互中，还能用在后端的各个自服务的调用中（即当一种RPC【远程过程调用】协议使用），尽管RPC有很多协议，比如thrift，grpc，但是http本身已经有大量的现成的支持工具可以使用，并且都对人类很友好，很容易debug。HTTP协议在微服务的使用是非常普遍的。
+
+
+
+​	当用HTTP实现接口发送请求时，就没有浏览器中那么多限制了，只要是符合HTTP个格式的就可以发。HTTP请求的格式，大概是这样的一个字符串【\r\n换行了】：
+
+~~~html
+<METHOD><URL> HTTP/1.1\r\n
+<Header1>:<HeaderValue1>\r\n
+<Header2>:<HeaderValue2>\r\n
+    ...
+<HeaderN>:<HeaderValueN>\r\n
+    \r\n
+<Body Data...>
+~~~
+
+​	其中的<METHOD>keyishi GET也可以是POST，或者是其他的HTTP Method。比如PUT,DELETE,OPTION...。从协议本身看，并没有什么限制说GET一定不能没有body，POST就一定不能把参数放到<URL>的querystring上。因此其实可以更加自由的去利用个格式。比如Elastic Search的_search api就是用了带body的GET；也可以自己开发接口让POST一半的参数放在url的querystring里，另一半放在body里；你甚至还可以让所有的参数都放在Header里——可以做各种各样的限制，只要请求的客户端和服务器能够约定好。
+
+~~~ps
+ 注：ElasticSearch是一个基于Lucene的搜索服务器。它提供了一个分布式多用户能力的全文搜索引擎，基于RESTful web接口
+~~~
+
+
+
+​	**当然太自由也带来了另一种麻烦**，开发人员不得不每次讨论确定参数是放url的path里，querystring里，body里，header里这种问题，太低效了。于是就有了一系列接口规范/风格。其中名气最大的当数REST。REST充分运用GET,POST,PUT和DELETE，约定了这4个接口分别获取，创建，替换和删除资源，**REST最佳实践还推荐在请求体使用json格式。**这样仅仅通过http的method就可以明白接口是什么意思，并且解析格式也得到了统一。
+
+~~~markdown
+json相对于x-www-form-urlencode的优势在于：
+	1. 可以有嵌套结构；
+	2.可以支更丰富的数据类型，通过一些框架，json可以直接被服务器代码映射为业务实体。用起来十分方便。但是如果是写一个接口支持上传文件，那么还是multipart/form-data格式更合适
+~~~
+
+​	REST中的GET和POST不是随便用的。在REST中，**GET + 资源定位符 被专用于获取资源或者资源列表**
+
+比如：
+
+~~~html
+GET http://foo.com/books  --获取书籍列表--
+GET http://foo.com/books/:bookId  --根据bookId获取一本具体的书--
+~~~
+
+​	与浏览器的场景相似，REST GET也不应有副作用，于是可以被反复无脑调用。浏览器（包括浏览器的Ajax请求）对于这种GET也可以实现缓存（如果服务器端提示了明确要Caching）；**但是如果用非浏览器**，有没有缓存完全看客户端的实现了。当然也可以从整个App角度，也可以完全绕开浏览器的缓存机制，实现一套业务定制的缓存框架（**可学习okhttp中控制Cache的类**）
+
+​	
+
+​	REST中的POST则用于创建资源  【POST】 + **资源定位符**
+
+比如：
+
+~~~html
+POST http://foo.com/books
+{
+	"title:"you see you one day day",
+	"author":"wsh",
+	.....
+}
+~~~
+
+​	这里就能留意到**浏览器中用来实现表单提交的POST，和REST里实现创建资源的POST语义上的不同**
+
+~~~markdown
+提下REST POST和REST PUT的区别。有些api是使用PUT作为创建资源的Method。PUT和POST的去别人在于，PUT的实际语义是“replace”replace。REST规范里提到的PUT请求应该是完整的资源，包括id在内。比如上面的创建一本书的api也可以定义为：
+PUT http://foo.com/books
+{
+	"id":"BOOK:AFFE001BB0556A",
+	"title:"you see you one day day",
+	"author":"wsh",
+	.....
+}
+服务器应该根据请求提供的id进行查找，如果存在一个对应的id的元素，就用请求中的数据*整体替换*已经存在的资源；如果没有，就用”把这个id对应的资源从【空】替换为请求数据“。——直观的看起来就是”创建“了。
+
+	与PUT相比，POST更像一个”factory“，通过一组必要的数据创建出完整的资源。
+	至于到底是用PUT还是POST创建资源，完全要看是不是提前可以知道资源所有的数据（尤其是id），以及是不是完整替换。
+		比如对于AWS S3这样的对象存储服务，当想上传一个新资源时，其id就是”ObjectName“可以提前知道。这个api也总是完整的replace整个资源。这是的api用PUT的语义更合适；而对于那些id时服务器端自动生成的场景，POST更合适一些。
+		
+跑题了 打住
+~~~
+
+
+
+回到接口这个主题，上面仅仅粗略的介绍了REST的情况，但是现实中总是有REST的变体，也可能使用非REST的协议：比如JSON-RPC,SOAP等，每种情况的GET和POST又会有所不同。
+
+
+
+
+
+### 关于安全性
+
+​	我们常常听到GET不如POST安全，因为POST用body传输数据，而GET用url传输，更加容易看到。但是，**从攻击角度**，无论时GET还是POST都不够安全，因为HTTP本身就是**明文协议**。每个HTTP请求和返回的每个byte都会在网络上传播，不管时url，header还是body。**这完全不是一个‘是否在浏览器地址栏上看到’的问题**
+
+
+
+​	为了避免传输中数据被窃取，**必须做从客户端到服务端的端端加密。业界通行的做法就时HTTPS——即用SSL协议协商出的密钥加密明文的http数据。**这个加密的协议和HTTP协议本身相互独立。如果时利用HTTP开发公网的站点/APP，要保证安全，https是最基本的要求。
+
+~~~https
+当然，端端加密并不一定非得用https。比如国内金融领域都会用私有网络，也有GB得加密协议SM系列。但是除了军队，金融等特殊机构之外，似乎没有必要自己发明一套类似于SSL的协议
+~~~
+
+
+
+​	回到HTTP本身，的确GET请求的参数更倾向于放在url上，因此会有更多的机会被泄露。比如携带私密信息的url会展示在地址栏上，还可以分享给第三方，就非常不安全了。此外，**从客户端都服务器端，有大量的中间节点，包括网关，代理等**。他们的access log通常会输出完整的url，比如**nginx的默认access log就是如此**。如果url携带敏感数据，就会被记录下来。**但是请注意，就算私密数据在body里，也是可以被记录下来的，因此如果请求要经过不信任的公网，避免泄密的唯一手段就是https**。这里说的“避免access log泄露”仅仅是***指避免可信区域中的http代理的默认行为带来的安全隐患。**比如你是不太希望让自己公司的运维同学从公司主网关的log里看到用户的密码吧
+
+![](.\img\HTTPS.png)
+
+
+
+​	另外，上面也讲过，如果是作为接口，GET实际上也可以带body,POST也可以在url上携带数据。所以实际上到底怎么传输私密数据，要看具体场景具体分析。当然，绝大多数场景，POST+body里写私密数据是合理的选择。一个典型的例子就是“登录”。
+
+​	安全是一个巨大的主题，又有很多的细节组成一个完备体系，比如返回私密数据的mask，XSS，CSFR，跨域安全，前端加密，钓鱼，salt，... POST和GET在这件事上只是一个小角色，因此单独讨论POST和GET本身哪个更安全意义并不是太大。只要记住一般情况下，私密数据传输用POST+body就好。
+
+
+
+### 关于编码

@@ -185,3 +185,63 @@ PUT http://foo.com/books
 
 
 ### 关于编码
+
+​	常见的说法有，比如GET的参数只支持ASCII，而POST能支持任意binary，包括中文。单其实上面可以看到，GET和POST实际上都能用url和body。**因此所为的编码确切的说是http中url用什么编码，body用什么编码**。
+
+
+
+​	先说下url。url只能支持ASCII的说法源自于RFC1738【 *RFC1738*描述的是统一资源定位器(URL)】
+
+~~~RFC1738
+thus， onlyalphanumerics，the specialcharacters "$-_.+!'()," ,and reserved characters used for their reserved purposes may be used unencoded whth in a URL.
+~~~
+
+​	**实际上这里规定的仅仅是一个ASCII的子集[a-zA-Z0-9$-_+!*'(),]。它们是可以“不经编码”在url中使用。比如尽管空格也是ASCII字符，但是不能直接在url里。**
+
+​	
+
+​	那这个编码是什么呢？如果有了特殊符号和中文怎么办呢？这里要介绍一种叫做percent-enconding的方法
+
+[https://en.wikipedia.org](https://en.wikipedia.org/)
+
+​	这也就是为啥我们偶尔看到url里有一坨%和16位数字组成的序列
+
+​	
+
+​	使用percent encoding ， 即使是binary data，也是可以通过编码后放在URL上的
+
+​	**但是要特别注意，这个编码方式只管把字符转换成URL可用字符，但是却不管字符集编码**，比如中文到底是用UTF8还是GBK，这块早期就相当乱，也没有什么统一的规范。比如有时跟网页编码一样，有的是操作系统的编码一样，最要命的是浏览器的地址栏是不受开发者控制的这样，对于同样一个带中文的url，如果有的浏览器一定要用GBK【比如老的IE8】，有的一定要用UTF8【比如chrome】。后端可能就认不出来。对此常用的办法是避免让用户输入带中文的url。**如果有这种形式的请求，都改成用户界面上输入，然后通过ajax发出的办法。ajax发出的编码形式开发者是可以100%控制的**
+
+~~~markdown
+不过目前基本上utf8已经大致统一了。现在的开发者除非是被国家规定要求一定要用GB系列编码的场景，基本不会再遇到这类问题了
+~~~
+
+​	关于url的编码，阮一峰的一片文章有比较详细的解释
+
+<http://www.ruanyifeng.com/blog/2010/02/url_encoding.html>
+
+~~~markdown
+顺便说一句，尽管再浏览器地址栏可以看到中文，但是这种url在发送请求的过程中，浏览器会把中文用字符编码+Percent-encoding翻译为真正的url，再发给服务器。浏览器地址栏里的中文这必是想让用户体验更好些而已
+~~~
+
+
+
+​	再讨论下body。HTTP Body相对好些，因为有个Content-Type来比较明确的定义。
+
+比如：
+
+~~~body
+POST XXXXXXX HTTP/1.1
+..
+Content-Type: application/x-www-form-urlencode; charset=utf-8
+~~~
+
+​	这里的Content-Type会同时定义**请求body的格式【application/x-www-form-urlencode】**和**字符编码【charset】**
+
+​	所以body和url都可以提交中文数据给后端，但是**POST规范好一些，相对不容易出错**，容易让开发者安心。对于GET+url的情况，只要不涉及到再老旧浏览器的地址栏输入url，也不会有什么太大的问题。
+
+
+
+​	回到POST，浏览器直接发出的POST请求就是表单提交，而表单提交只有application/x-www-form-urlencode针对简单的key-value场景，和multipart/form-data，针对只有文件提交，或者同时又文件和key-value的混合提交表单的场景
+
+​	如果是ajax或者其他http client发出去的POST请求，其body格式就非常自由了，常用的有json，xml，文本，csv。。。甚至是你自己发明的格式。只要前后端能约定好就行了。
